@@ -5,65 +5,69 @@ import ai.timefold.solver.core.api.domain.lookup.PlanningId;
 import ai.timefold.solver.core.api.domain.variable.PlanningVariable;
 
 import java.time.Duration;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.Objects;
 
 @PlanningEntity
 public class Appointment {
 
     @PlanningId
-    private String appointment;
-    private Duration duration;
+    private String name;
 
-    // New field to assign the day of the appointment
-    @PlanningVariable
-    private LocalDate date;
+    @PlanningVariable(valueRangeProviderRefs = {"timeSlotRange"})
+    private LocalDateTime timeSlot;
 
-    @PlanningVariable
-    private LocalTime startTime;
+    public Appointment() {
+    }
+
+    public Appointment(String name, LocalDateTime timeSlot) {
+        this.name = name;
+        this.timeSlot = timeSlot;
+    }
 
     public LocalTime getEndTime() {
-        return startTime.plus(duration);
-    }
-
-    public Appointment(String appointment, Duration duration) {
-        this.appointment = appointment;
-        this.duration = duration;
-    }
-
-    public Appointment() {}
-
-    // Getters and setters
-    public String getAppointment() {
-        return appointment;
-    }
-
-    public void setAppointment(String appointment) {
-        this.appointment = appointment;
-    }
-
-    public Duration getDuration() {
-        return duration;
-    }
-
-    public void setDuration(Duration duration) {
-        this.duration = duration;
+        return this.timeSlot.plus(Duration.ofMinutes(30)).toLocalTime();
     }
 
     public LocalTime getStartTime() {
-        return startTime;
+        return this.timeSlot.toLocalTime();
     }
 
-    public void setStartTime(LocalTime startTime) {
-        this.startTime = startTime;
+    public String getName() {
+        return name;
     }
 
-    public LocalDate getDate() {
-        return date;
+    public void setName(String name) {
+        this.name = name;
     }
 
+    public LocalDateTime getTimeSlot() {
+        return timeSlot;
+    }
 
-    public void setDate(LocalDate date) {
-        this.date = date;
+    public void setTimeSlot(LocalDateTime timeSlot) {
+        this.timeSlot = timeSlot;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Appointment that = (Appointment) o;
+        return Objects.equals(getName(), that.getName()) && Objects.equals(getTimeSlot(), that.getTimeSlot());
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(getName(), getTimeSlot());
+    }
+
+    @Override
+    public String toString() {
+        return "Appointment{" +
+                "name='" + name + '\'' +
+                ", timeSlot=" + timeSlot +
+                '}';
     }
 }
