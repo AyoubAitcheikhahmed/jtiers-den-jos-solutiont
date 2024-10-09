@@ -3,40 +3,33 @@ package org.acme;
 import ai.timefold.solver.core.api.domain.solution.PlanningEntityCollectionProperty;
 import ai.timefold.solver.core.api.domain.solution.PlanningScore;
 import ai.timefold.solver.core.api.domain.solution.PlanningSolution;
+import ai.timefold.solver.core.api.domain.solution.ProblemFactCollectionProperty;
 import ai.timefold.solver.core.api.domain.valuerange.ValueRangeProvider;
 import ai.timefold.solver.core.api.score.buildin.hardsoft.HardSoftScore;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
+import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Objects;
 
 
 @PlanningSolution
 public class Schedule {
 
     @PlanningEntityCollectionProperty
-    List<Appointment> appointments;
-    @ValueRangeProvider
-    List<LocalTime> startTimes;
+    private List<Appointment> appointments;
 
-    @ValueRangeProvider
-    List<LocalDate> dates;
+    @ProblemFactCollectionProperty
+    @ValueRangeProvider(id = "timeSlotRange")
+    private List<LocalDateTime> timeSlotRange;
 
     @PlanningScore
-    HardSoftScore score;
+    private HardSoftScore score;
 
     public Schedule() {
     }
 
-    public Schedule(List<Appointment> appointments, List<LocalTime> startTimes,List<LocalDate> dates) {
+    public Schedule(List<Appointment> appointments, List<LocalDateTime> timeSlotRange) {
         this.appointments = appointments;
-        this.startTimes = startTimes;
-        this.dates = dates;
-    }
-
-    public HardSoftScore getScore() {
-        return score;
+        this.timeSlotRange = timeSlotRange;
     }
 
     public List<Appointment> getAppointments() {
@@ -47,29 +40,19 @@ public class Schedule {
         this.appointments = appointments;
     }
 
-    public List<LocalTime> getStartTimes() {
-        return startTimes;
+    public List<LocalDateTime> getTimeSlotRange() {
+        return timeSlotRange;
     }
 
-    public void setStartTimes(List<LocalTime> startTimes) {
-        this.startTimes = startTimes;
+    public void setTimeSlotRange(List<LocalDateTime> timeSlotRange) {
+        this.timeSlotRange = timeSlotRange;
+    }
+
+    public HardSoftScore getScore() {
+        return score;
     }
 
     public void setScore(HardSoftScore score) {
         this.score = score;
     }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        Schedule schedule = (Schedule) o;
-        return Objects.equals(startTimes, schedule.startTimes) && Objects.equals(dates, schedule.dates);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(startTimes, dates);
-    }
 }
-

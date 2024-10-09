@@ -2,125 +2,63 @@ package org.acme;
 
 import ai.timefold.solver.core.api.score.buildin.hardsoft.HardSoftScore;
 import ai.timefold.solver.core.api.score.stream.Constraint;
-import ai.timefold.solver.core.api.score.stream.ConstraintCollectors;
 import ai.timefold.solver.core.api.score.stream.ConstraintFactory;
 import ai.timefold.solver.core.api.score.stream.ConstraintProvider;
 
-import java.time.DayOfWeek;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 
-import static ai.timefold.solver.core.api.score.stream.Joiners.equal;
-import static ai.timefold.solver.core.api.score.stream.Joiners.overlapping;
-import static java.util.stream.Collectors.counting;
+import static java.time.DayOfWeek.MONDAY;
 
 public class JosConstraintProvider implements ConstraintProvider {
+    private final LocalDateTime MONDAY_9_AM = LocalDateTime.now().with(MONDAY).withHour(9).withMinute(0).withSecond(0);
+    private final HardSoftScore PENALTY_HARD = HardSoftScore.ofHard(100);
+    private final HardSoftScore PENALTY_SOFT = HardSoftScore.ofSoft(10);
+    private final String PREVENT_OVERLAP_IN_TIMESLOTS = "appointmentTimeAndDateDoNotOverlap";
+    private final String START_ASAP = "appointmentStartsAsEarlyAsPossible";
 
     @Override
-    public Constraint[] defineConstraints(ConstraintFactory constraintFactory) {
+    public Constraint[] defineConstraints(ConstraintFactory factory) {
         return new Constraint[]{
-                preventOverlapInSameTimeSlotAndSameDay(constraintFactory),
-    //                limitAppointmentsToMaxPerDay(constraintFactory),
-                doNotScheduleOnWeekend(constraintFactory),
-                //  "score": "0hard/0soft"
-                preferEarlierAppointments(constraintFactory),
-                //  "score": "-844hard/0soft"
-//                preferEarlierTimesInTheDay(constraintFactory),
-
-                //TODO: appointment priority
-                /*
-                 , app2 , app3
-
-                after scheduling
-                app3 , app1 , app2 😭
-                app1 , app2 , app3 ❤️
-
-
-                 */
+                startAsSoonAsPossible(factory),
+                preventOverlapInTimeslots(factory),
         };
     }
 
-    // ************************************************************************
-    // Hard constraints
-    // ************************************************************************
-
-    //testing time only constraint
-    private Constraint preventOverlapInSameTimeSlot(ConstraintFactory constraintFactory) {
-        return constraintFactory.forEachUniquePair(Appointment.class,
-                        overlapping(Appointment::getStartTime, Appointment::getEndTime))
-                .penalize(HardSoftScore.ONE_HARD)
-                .asConstraint("No overlapping in the same time slot");
-    }
-    //testing day only constraint
-    private Constraint preventOverlapOnSameDay(ConstraintFactory constraintFactory) {
-        return constraintFactory.forEachUniquePair(Appointment.class)
-                .filter((appointment1, appointment2) -> appointment1.getDate().equals(appointment2.getDate()))
-                .penalize(HardSoftScore.ONE_HARD)
-                .asConstraint("No overlapping on the same day");
+    private Constraint startAsSoonAsPossible(ConstraintFactory factory) {
+        return factory.forEach(Appointment.class)
+                .penalize(PENALTY_SOFT, this::calculateMinutesPassedSinceMonday9Am)
+                .asConstraint(START_ASAP);
     }
 
-    // DAY-TIME Overlap constraint
-    private Constraint preventOverlapInSameTimeSlotAndSameDay(ConstraintFactory constraintFactory) {
-        return constraintFactory.forEachUniquePair(Appointment.class,
-                        equal(Appointment::getDate),
-                        overlapping(Appointment::getStartTime, Appointment::getEndTime))
-                .penalize(HardSoftScore.ONE_HARD)
-                .asConstraint("No overlapping in the same time slot and same day");
+    private Constraint preventOverlapInTimeslots(ConstraintFactory factory) {
+        return factory.forEachUniquePair(Appointment.class)
+                .filter(this::isOnSameDay)
+                .filter(this::hasOverlappingTimeslot)
+                .penalize(PENALTY_HARD, this::calculateOverlappingTimeInMinutes)
+                .asConstraint(PREVENT_OVERLAP_IN_TIMESLOTS);
     }
 
-    // DEN JOS, HEEL LUI - mag maar 2 afspraken per dag afwerken. TOF HÉ 😁
-    private Constraint limitAppointmentsToMaxPerDay(ConstraintFactory constraintFactory) {
-        return constraintFactory.forEach(Appointment.class)
-                .groupBy(Appointment::getDate, ConstraintCollectors.count())
-                .filter((date, count) -> count < 2)
-                .penalize(HardSoftScore.ONE_HARD)
-                .asConstraint("Limit appointments to a max number of appointments per day");
+    private int calculateMinutesPassedSinceMonday9Am(Appointment appointment) {
+        return (int) Duration.between(MONDAY_9_AM, appointment.getTimeSlot()).toMinutes();
     }
 
-    //DEN JOS ZEGT: JA T'S WEEKEND È 🍻
-    private Constraint doNotScheduleOnWeekend(ConstraintFactory constraintFactory) {
-        return constraintFactory.forEach(Appointment.class)
-                .filter(appointment -> appointment.getDate().getDayOfWeek() == DayOfWeek.SATURDAY ||
-                        appointment.getDate().getDayOfWeek() == DayOfWeek.SUNDAY)
-                .penalize(HardSoftScore.ONE_HARD)
-                .asConstraint("No work on weekends");
+    private int calculateOverlappingTimeInMinutes(Appointment existing, Appointment projected) {
+        LocalTime start = existing.getStartTime().isAfter(projected.getStartTime()) ? existing.getStartTime() : projected.getStartTime();
+        LocalTime end = existing.getEndTime().isBefore(projected.getEndTime()) ? existing.getEndTime() : projected.getEndTime();
+
+        return (int) Duration.between(start, end).toMinutes();
     }
 
-    private Constraint preferEarlierAppointments(ConstraintFactory constraintFactory) {
-        return constraintFactory.forEach(Appointment.class)
-                .filter( appointment -> appointment.getDate().getDayOfWeek() == DayOfWeek.MONDAY)
-                .penalize(HardSoftScore.ONE_SOFT,
-                        appointment -> appointment.getStartTime().getHour() - 9) // Penalize more   as the appointment start time gets later in the day
-                .asConstraint("Prefer earlier appointments starting from 9:00 AM");
+    private boolean hasOverlappingTimeslot(Appointment existing, Appointment projected) {
+        return (projected.getEndTime().isAfter(existing.getStartTime()) &&
+                projected.getStartTime().isBefore(existing.getEndTime())) ||
+                (existing.getEndTime().isAfter(projected.getStartTime()) &&
+                        existing.getStartTime().isBefore(projected.getEndTime()));
     }
 
-    // ************************************************************************
-    // Soft constraints
-    // ************************************************************************
-
-
-    // Soft constraint: Prefer earlier appointments in the day, starting at 9:00 AM
-    private Constraint preferEarlierTimesInTheDay(ConstraintFactory constraintFactory) {
-        return constraintFactory.forEach(Appointment.class)
-                .penalize(HardSoftScore.ONE_HARD,
-                        appointment -> {
-                            // Calculate the difference between the start time of the appointment and 9:00 AM
-                            long minutesDifference = Duration.between(LocalTime.of(9, 0), appointment.getStartTime()).toMinutes();
-
-                            // If the appointment starts earlier than 9:00 AM (unlikely), no penalty
-                            if (minutesDifference < 0) {
-                                return 0;
-                            }
-
-                            return (int) minutesDifference;  // Penalize later start times
-                        })
-                .asConstraint("Prefer earlier times in the day");
+    private boolean isOnSameDay(Appointment scheduled, Appointment projected) {
+        return scheduled.getTimeSlot().toLocalDate().equals(projected.getTimeSlot().toLocalDate());
     }
-
-
-
-
-
-
-
 }
